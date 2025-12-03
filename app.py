@@ -1,8 +1,9 @@
 # All imports at the top
 import sqlite3 
 import pandas as pd 
-
+import os
 import asyncio
+from dotenv import load_dotenv
 
 from vanna import Agent, AgentConfig 
 from vanna.core.registry import ToolRegistry
@@ -18,9 +19,12 @@ from vanna.integrations.local.agent_memory import DemoAgentMemory
 # --- Configuration ---
 
 # Configure your LLM
+load_dotenv()
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+
 llm = GeminiLlmService(
     model="gemini-2.5-flash-lite",  # Using the free tier model
-    api_key="AIzaSyCs9A2MIOL5JL2TF4V8-jPql1DIMB-DQvY"  # Your specific key
+    api_key=GEMINI_KEY  # Your specific key
 )
 
 # Configure your database
