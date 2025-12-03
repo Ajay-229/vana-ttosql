@@ -1,4 +1,3 @@
-# All imports at the top
 import sqlite3 
 import pandas as pd 
 import os
@@ -8,33 +7,40 @@ from dotenv import load_dotenv
 from vanna import Agent, AgentConfig 
 from vanna.core.registry import ToolRegistry
 from vanna.core.user import UserResolver, User, RequestContext
-from vanna.tools import RunSqlTool, VisualizeDataTool
-from vanna.tools.agent_memory import SaveQuestionToolArgsTool, SearchSavedCorrectToolUsesTool, SaveTextMemoryTool
 from vanna.servers.fastapi import VannaFastAPIServer
+from vanna.tools import RunSqlTool, VisualizeDataTool
+from vanna.tools.agent_memory import (
+    SaveQuestionToolArgsTool, 
+    SearchSavedCorrectToolUsesTool, 
+    SaveTextMemoryTool
+)
+from vanna.integrations.chromadb import ChromaAgentMemory 
 from vanna.integrations.google import GeminiLlmService
 from vanna.integrations.sqlite import SqliteRunner
-from vanna.integrations.local.agent_memory import DemoAgentMemory
 
+## ⚙️ Configuration
 
-# --- Configuration ---
-
-# Configure your LLM
 load_dotenv()
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
+if not GEMINI_KEY:
+    print("FATAL: GEMINI_API_KEY environment variable not set. Please check your .env file.")
+    exit(1)
+
 llm = GeminiLlmService(
-    model="gemini-2.5-flash-lite",  # Using the free tier model
-    api_key=GEMINI_KEY  # Your specific key
+    model="gemini-2.5-flash-lite",
+    api_key=GEMINI_KEY
 )
 
-# Configure your database
+DB_PATH = "./Chinook.sqlite"
 db_tool = RunSqlTool(
-    sql_runner=SqliteRunner(database_path="./Chinook.sqlite")) # Using the local sample DB
+    sql_runner=SqliteRunner(database_path=DB_PATH))
 
-# Configure your agent memory
-agent_memory = DemoAgentMemory(max_items=1000)
+agent_memory = ChromaAgentMemory(
+    collection_name="chinook_memory",
+    persist_directory="./vanna_chroma_db"
+)
 
-# Configure user authentication (simple cookie resolver)
 class SimpleUserResolver(UserResolver):
     async def resolve_user(self, request_context: RequestContext) -> User:
         user_email = request_context.get_cookie('vanna_email') or 'guest@example.com'
@@ -43,51 +49,44 @@ class SimpleUserResolver(UserResolver):
 
 user_resolver = SimpleUserResolver()
 
-# --- Training (RAG Step) - THE ABSOLUTE FINAL FIX ---
+## 🧠 Training (RAG Step)
 
-# --- Training (RAG Step) - FINAL AWAIT FIX ---
+print("--- Starting Vanna DDL Training ---")
 
-print("--- Starting Vanna Training ---")
-# ... (DEBUG prints unchanged) ...
-
-async def run_ddl_training(df_ddl, agent_memory):
+async def run_ddl_training(db_path, agent_memory):
     """Asynchronously runs the DDL training loop."""
-    for ddl in df_ddl['sql'].to_list():
-        # *** FIX: Using await for the async method ***
-        # The save_text_memory method is a coroutine and must be awaited.
-        await agent_memory.save_text_memory(ddl, 'DDL for Chinook database') 
-        print(f"Trained DDL on Agent Memory: {ddl[:50]}...")
+    try:
+        conn = sqlite3.connect(db_path)
+        query = "SELECT type, sql FROM sqlite_master WHERE sql IS NOT NULL"
+        df_ddl = pd.read_sql_query(query, conn)
+        conn.close()
 
-try:
-    # 1. Use standard sqlite3 and pandas to safely extract DDL 
-    conn = sqlite3.connect("./Chinook.sqlite")
-    query = "SELECT type, sql FROM sqlite_master WHERE sql IS NOT NULL"
-    df_ddl = pd.read_sql_query(query, conn)
-    conn.close()
-    
-    print(f"DEBUG: DDL extracted. Total items to train: {len(df_ddl)}.")
-    
-    # 2. Run the asynchronous training loop synchronously
-    asyncio.run(run_ddl_training(df_ddl, agent_memory))
-    
-except Exception as e:
-    print(f"Error during DDL extraction/training: {e}")
+        if df_ddl.empty:
+            print(f"Warning: No DDL found in {db_path}. Training skipped.")
+            return
+        
+        print(f"DEBUG: DDL extracted. Total items to train: {len(df_ddl)}.")
+        
+        for ddl in df_ddl['sql'].to_list():
+            await agent_memory.save_text_memory(ddl, 'DDL for Chinook database') 
+        
+        print(f"Successfully trained {len(df_ddl)} DDL items into ChromaDB.")
 
+    except Exception as e:
+        print(f"Error during DDL extraction/training: {e}")
+
+asyncio.run(run_ddl_training(DB_PATH, agent_memory))
 print("--- Training Complete ---")
-# --- Agent Creation ---
 
-# Create your tools registry and register all necessary tools
+## 🤖 Agent Setup
+
 tools = ToolRegistry()
-# 1. Database Query Tool 
 tools.register_local_tool(db_tool, access_groups=['admin', 'user'])
-# 2. Agent Memory Tools 
-tools.register_local_tool(SaveQuestionToolArgsTool(), access_groups=['admin'])
-tools.register_local_tool(SearchSavedCorrectToolUsesTool(), access_groups=['admin', 'user'])
-tools.register_local_tool(SaveTextMemoryTool(), access_groups=['admin', 'user'])
-# 3. Data Visualization Tool
+tools.register_local_tool(SaveQuestionToolArgsTool(), access_groups=['admin']) 
+tools.register_local_tool(SearchSavedCorrectToolUsesTool(), access_groups=['admin', 'user']) 
+tools.register_local_tool(SaveTextMemoryTool(), access_groups=['admin', 'user']) 
 tools.register_local_tool(VisualizeDataTool(), access_groups=['admin', 'user'])
 
-# Create your agent
 agent = Agent(
     llm_service=llm,
     tool_registry=tools,
@@ -96,6 +95,7 @@ agent = Agent(
     config=AgentConfig() 
 )
 
-# --- Run the Server ---
+## 🚀 Run the Server
+
 server = VannaFastAPIServer(agent)
 server.run()
