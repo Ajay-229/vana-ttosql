@@ -1,0 +1,27 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  vanna-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Pass the full authenticated proxy URL as a build argument
+        HTTP_PROXY: "http://softwarece1:Hmis%401234@172.16.24.44:3128"
+        HTTPS_PROXY: "http://softwarece1:Hmis%401234@172.16.24.44:3128"
+    
+    # Inject runtime secrets (GEMINI_API_KEY) from the local .env file
+    env_file:
+      - .env
+
+    ports:
+      - "8000:8000"
+
+    # Persist the ChromaDB memory and the SQLite database file
+    volumes:
+      - ./vanna_chroma_db:/app/vanna_chroma_db
+      - ./Chinook.sqlite:/app/Chinook.sqlite
+    
+    container_name: vanna-sqlite-agent

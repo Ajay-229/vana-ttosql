@@ -1,0 +1,11 @@
+# requirements.txt
+vanna
+vanna-core
+vanna-chromadb
+vanna-gemini
+vanna-google
+fastapi
+uvicorn
+pandas
+python-dotenv
+gunicorn
