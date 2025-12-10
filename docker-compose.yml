@@ -1,4 +1,4 @@
-# docker-compose.yml
+# docker-compose.yml - FINAL CORRECTED FILE (Pointing to app:app)
 
 version: '3.8'
 
@@ -12,9 +12,14 @@ services:
         HTTP_PROXY: "http://softwarece1:Hmis%401234@172.16.24.44:3128"
         HTTPS_PROXY: "http://softwarece1:Hmis%401234@172.16.24.44:3128"
     
-    # Inject runtime secrets (GEMINI_API_KEY) from the local .env file
+    # Inject runtime secrets (GEMINI_API_KEY, VANNA_TRAIN_RESPONSE, etc.) from the local .env file
     env_file:
       - .env
+      
+    # CRITICAL: Add runtime proxy variables for the container itself
+    environment:
+      - HTTP_PROXY=http://softwarece1:Hmis%401234@172.16.24.44:3128
+      - HTTPS_PROXY=http://softwarece1:Hmis%401234@172.16.24.44:3128
 
     ports:
       - "8000:8000"
@@ -25,3 +30,14 @@ services:
       - ./Chinook.sqlite:/app/Chinook.sqlite
     
     container_name: vanna-sqlite-agent
+    
+    # --- CPU-ONLY CONFIRMATION ---
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5' 
+          memory: 1024M 
+
+    # --- FINAL CORRECTED ENTRYPOINT (Using the Vanna documented method) ---
+    # Points to app:app, which is the standard Uvicorn target for the callable object created by server.create_app().
+    entrypoint: /bin/sh -c "echo \"${VANNA_TRAIN_RESPONSE}\" | python train.py && uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4"

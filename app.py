@@ -1,9 +1,10 @@
+# app.py - FINAL CORRECTED FILE (Using server.create_app())
+
 import sqlite3
 import pandas as pd
 import os
 from dotenv import load_dotenv
 
-# Add this import for the embedding function
 from chromadb.utils.embedding_functions import GoogleGenerativeAiEmbeddingFunction
 
 from vanna import Agent, AgentConfig
@@ -77,7 +78,10 @@ agent = Agent(
     config=AgentConfig()
 )
 
-## 🚀 Run the Server
+## 🚀 Expose the Server for Uvicorn
 
+# 1. Instantiate the VannaFastAPIServer object
 server = VannaFastAPIServer(agent)
-server.run()
+
+# 2. CRITICAL: Use the official Vanna method to get the callable ASGI app object
+app = server.create_app()
